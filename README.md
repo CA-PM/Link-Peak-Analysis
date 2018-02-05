@@ -4,7 +4,7 @@ Application which will determine the max interface utilization values for a grou
 
 
 
-##Installation Instructions:
+## Installation Instructions:
 
 ### CAPC 3.0 and later:
 1. Download Application ZIP file from the GitHub repository
@@ -15,7 +15,7 @@ Application which will determine the max interface utilization values for a grou
 5. Select the Link Peak Analysis app from the drop-down menu and save the view & dashboard
 6. Select the target group and time-frame with the CAPC Dashboard controls
 
-##Key URL parameters:
+### Key URL parameters:
 1. id : Group ID of CAPC dashboard
 2. starttime: Start time as defined in the CAPC Dashboard
 3. endtime: End time as defined in the CAPC Dashboard
