@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html> <!-- The HTML page for the App will have a head, a body, and a script component -->
+<head>
+	<meta charset="UTF-8">
+	<title>Link Peak Analysis</title>
+	<!-- CA Helper Functions -->
+		<script src="./lib/caHelperFunctions.js"></script> 
+	<!-- D3 -->
+		<script src="./lib/d3/d3.min.js"></script>  
+	<!-- DataTables -->
+	<script type="text/javascript" src="./lib/jquery/jquery-1.11.2.min.js"></script>
+	<script type="text/javascript" src="./lib/jquery/jquery-ui.min.js"></script>
+	<link href='./lib/jquery/jquery-ui.css' rel='stylesheet' type='text/css'>
+	<script src="./lib/jquery/jquery.dataTables.min.js" type="text/javascript"></script>
+	<script src="./lib/jquery/dataTables.colReorder.min.js" type="text/javascript"></script>
+	<script src="./lib/caHelperFunctions.js" type="text/javascript"></script>
+	<link href="./lib/jquery/jquery.dataTables.css" rel="stylesheet" type="text/css" />
+	<link href="./lib/jquery/colReorder.jqueryui.css" rel="stylesheet" type="text/css" />
+	<!-- CAPC Themed Data Table -->
+	<link href="./lib/dataTables/themes/CAPC_datatable.css" rel="stylesheet" type="text/css" />
+	<link href="./lib/dataTables/buttons.dataTables.min.css" rel="stylesheet" type="text/css" />
+	<script src="./lib/dataTables/dataTables.buttons.min.js" type="text/javascript"></script>
+	<script src="./lib/dataTables/buttons.html5.min.js" type="text/javascript"></script>
+	<!-- Loading Spinner -->
+	<script src="./lib/spinner/spin.js"></script>  
+
+</head> 
+<body>
+	<div id="main">
+     	<div id="dataTables_wrapper" class="dataTables_wrapper">
+    		<table class="dataTable" id="dataTable"></table>
+		</div>
+	</div>
+	<script> 
+
+	$(document).ready(function () {
+
+		var url;
+
+		if (getQueryVariable("test")) {
+			url="./interface-utilization-last24.json";
+		}
+		else {
+			url="/pc/odata/api/interfaces?&resolution=RATE&$format=json&$expand=portmfs&$select=Name,ID,portmfs/Timestamp,portmfs/im_Utilization&$filter=((groups/ID eq " + getQueryVariable("id") + "))" +
+			    "&starttime=" + getQueryVariable("starttime") + "&endtime=" + getQueryVariable("endtime") +
+			    "&top=5000";
+		}
+		var spinTarget = document.getElementById('main');
+    	var spinner = new Spinner({color:'#000000', lines: 12}).spin(spinTarget);
+
+		d3.json (url, function(error, data) {
+			if (error) {
+				spinner.stop();
+				throw error;
+			}
+			else {
+				parseData(data.d.results);
+			}
+		});
+
+		function parseData(interfaceData){
+			
+			var resultsSet=[];
+			// Iterate through each interface record
+			interfaceData.forEach(function (d){
+				// For each interface track the # of samples over threshold
+				var count_aboveThreshold=0, duringBH=[], outsideBH=[], allTimes=[];
+				// Iterate through each timestamp value pair
+				d.portmfs.results.forEach(function (dd){
+					// Convert timestamp into JavaScript Data object for easy comparison
+					var dateTime=new Date(dd.Timestamp * 1000);
+					// Count of values over 70%
+					if(dd.im_Utilization > 70) { count_aboveThreshold++; }
+					// array to hold all values (24x7)
+					allTimes.push(Number(dd.im_Utilization));
+					// Build array of values if within BH
+					if (inBusinessHours(dateTime)) { duringBH.push(Number(dd.im_Utilization));}
+					// Build array of values outside BH
+					else {outsideBH.push(Number(dd.im_Utilization));}
+				}) // END metric loop
+				// Convert count of minutes to hours:minutes notation
+				var hours = Math.floor( (count_aboveThreshold * 5) / 60);          
+    			var minutes = (count_aboveThreshold * 5) % 60;
+    			var timeString;
+    			if (hours === 0 && minutes === 0) {
+    				timeString="--"
+    			}
+    			else if (hours === 0) {
+    				timeString=minutes + " minutes";
+    			}
+    			else if (minutes < 10) {
+    				timeString=hours + ":0" + minutes;
+    			}
+    			else {
+    				timeString=hours + ":" + minutes;
+    			}
+    			var drillDownUrl="/pc/redirector?SourceType=262144&LocalID=" + d.ID;
+				// Create interface data to populate table
+				resultsSet.push({
+					name: '<a href="' + drillDownUrl + '">' + d.Name + '</a>',
+					alias: d.AlternateName,
+					samplesOverThreshold: timeString,
+					peakDuringBH: duringBH.length > 0 ? d3.max(duringBH).toFixed(2) : "--" ,
+					peakOutsideBH: outsideBH.length > 0 ? d3.max(outsideBH).toFixed(2) : "--",
+					peakAllDay: allTimes.length > 0 ? d3.max(allTimes).toFixed(2) : "--"
+				})
+			}) // END interface loop
+			spinner.stop();
+			// Call function to build table
+			displayResults(resultsSet);
+		}
+
+		// Function to build DataTable
+		function displayResults(data) {
+			var table=$('#dataTable').DataTable({
+				dom: 'Bfrtipl',	
+	        	data: data,
+        	   "fnRowCallback": function( nRow, myInfraArray) {
+	                $(nRow).children().each(function(index, td, myInfraArray) {     
+		                if (($(td).html() < 70 &&  $(td).html() > 0)) {
+					 			$(td).css("background-color", "#48A23F");
+					 			$(td).css("color", "white");
+					 			$(td).css("font-weight", "bold");
+		                } 
+		                else if (($(td).html() >= 70 && $(td).html() < 80 ) ) {
+		     					$(td).css("background-color", "#fcfb45");
+		     					$(td).css("color", "black");
+					 			$(td).css("font-weight", "bold");
+		     			}
+		     			else if (($(td).html() >= 80 && $(td).html() < 90 ) ) {
+		     					$(td).css("background-color", "#F7922F");
+		     					$(td).css("color", "white");
+					 			$(td).css("font-weight", "bold");
+		     			}
+		     			else if (($(td).html() >= 90) ) {
+		     					$(td).css("background-color", "#DB4332");
+		     					$(td).css("color", "white");
+					 			$(td).css("font-weight", "bold");
+		     			}
+				    });
+				    return nRow;
+				},
+			    buttons: [ 'copy', 'csv', 'excel'],
+			    pageLength : 25,
+				order: ([2, 'desc']),
+	            colReorder: true,
+	            "pagingType": "full_numbers",
+	            columns: [
+	                { data: 'name', "title": 'Link Name', "className": "dt-head-center"},
+	            //    { data: 'alias', "title": 'Alias'},
+	                { data: 'samplesOverThreshold', "title": 'Minutes over Threshold (70%)', "className": "dt-center"},
+	                { data: 'peakDuringBH', "title": 'Peak during Business Hours', "className": "dt-center"},
+	                { data: 'peakOutsideBH', "title": 'Peak outside Business Hours', "className": "dt-center"},
+	                { data: 'peakAllDay', "title": 'Peak all Hours', "className": "dt-center"}
+	            ]
+	        });
+			$(".dataTables_filter input").attr("placeholder", "Search");
+		}
+		// Function to evaluate if date/time value is within BH boundary
+		function inBusinessHours(d) {
+		    var hours = d.getHours();
+		    var mins = d.getMinutes();
+		    return hours >= 7 
+		        && (hours < 18 || hours === 18 && mins === 0);
+		}
+
+		function colorCellsByValue() {
+			var colorScale = d3.scale.threshold()
+		    	.domain([30, 70])
+		    	.range(["red", "yellow", "green"]);
+			var myTable=d3.select("table");
+			var myCells=myTable.selectAll("td")
+			.style("background-color", function (d, i) {
+				return colorScale(i);
+			});
+		}
+	});
+
+	</script>
+</body>
+</html>
